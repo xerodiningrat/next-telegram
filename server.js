@@ -1,19 +1,9 @@
 const express = require('express');
 const TelegramBot = require('node-telegram-bot-api');
 const midtransClient = require('midtrans-client');
-const mongoose = require('mongoose');
 const cron = require('node-cron');
+
 require('dotenv').config();
-
-// Koneksi ke MongoDB
-mongoose.connect(process.env.MONGODB_URI, { useNewUrlParser: true, useUnifiedTopology: true });
-
-// Definisikan skema dan model pengguna
-const userSchema = new mongoose.Schema({
-    chatId: { type: Number, unique: true },
-});
-
-const User = mongoose.model('User', userSchema);
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -42,13 +32,15 @@ const products = [
     { id: 2, name: "AI CLAUDE", sold: 9200, description: "Sharing & Full Garansi.", variations: [{ duration: "1 Minggu", price: 12000, stock: 20 }] },
 ];
 
+// Store chat IDs for broadcasting
+const chatIds = [];
+
 // Function to create product detail messages
 function getProductDetailsMessage(product) {
     const now = new Date();
     const currentTime = now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
-    return `
-╭─────────────────✧
+    return `╭─────────────────✧
 ┊・ Produk: ${product.name}
 ┊・ Stok Terjual: ${product.sold}
 ┊・ Desk: ${product.description}
@@ -57,8 +49,7 @@ function getProductDetailsMessage(product) {
 ┊ Variasi, Harga & Stok:
 ${product.variations.map(v => `┊・ ${v.duration}: Rp ${v.price} - Stok: ${v.stock}`).join('\n')}
 ╰─────────────────✧
-╰➤ Refresh at ${currentTime} WIB
-    `;
+╰➤ Refresh at ${currentTime} WIB`;
 }
 
 let orderStatus = {};
@@ -66,13 +57,10 @@ let orderStatus = {};
 bot.onText(/\/start/, (msg) => {
     const chatId = msg.chat.id;
 
-    // Tambahkan chatId jika belum ada
-    User.findOne({ chatId: chatId }, (err, foundUser) => {
-        if (!foundUser) {
-            const newUser = new User({ chatId: chatId });
-            newUser.save().then(() => console.log(`New user added to database: ${chatId}`));
-        }
-    });
+    // Add chatId to the list if not already included
+    if (!chatIds.includes(chatId)) {
+        chatIds.push(chatId);
+    }
 
     const productList = `╭────────────✧
 │   LIST PRODUK          
@@ -121,7 +109,6 @@ bot.onText(/\/start/, (msg) => {
     bot.sendMessage(chatId, `Selamat datang! Pilih produk dengan mengetik angka yang sesuai:\n${productList}`);
 });
 
-// Pesan produk dan pemrosesan lainnya
 bot.on('message', (msg) => {
     const chatId = msg.chat.id;
     const text = msg.text;
@@ -142,7 +129,7 @@ bot.on('message', (msg) => {
                     .concat([[{ text: 'Refresh', callback_data: 'refresh' }]])
             }
         });
-    } 
+    }
 });
 
 bot.on('callback_query', (callbackQuery) => {
@@ -236,43 +223,68 @@ function checkTransactionStatus(chatId, orderId, delay) {
                        INVOICE
 ==================================
 Tanggal & Waktu       : ${new Date().toLocaleString('id-ID')}
-Order ID              : ${orderId}
-Nama Produk           : ${orderStatus[chatId].product.name}
-Variasi              : ${orderStatus[chatId].variation.duration}
-Jumlah               : 1
-Total                : Rp ${orderStatus[chatId].variation.price}
-Status               : ${statusResponse.transaction_status}
+Order ID              : ${statusResponse.order_id}
+Jenis Transaksi        : ${statusResponse.payment_type}
+Channel               : ${statusResponse.payment_type}
+Status                : ${statusResponse.transaction_status === "settlement" ? "Berhasil" : statusResponse.transaction_status}
+Nilai                 : Rp${statusResponse.gross_amount}
+Email Pelanggan       : customer@example.com
 ==================================
-                `;
-                bot.sendMessage(chatId, invoiceMessage);
+          Terima kasih atas pembelian Anda!
+     Silakan hubungi kami jika ada pertanyaan.
+==================================`;
+
+                if (statusResponse.transaction_status === "settlement") {
+                    bot.sendMessage(chatId, `Pembayaran berhasil!\n${invoiceMessage}`, {
+                        reply_markup: {
+                            inline_keyboard: [[
+                                { text: 'Konfirmasi via WhatsApp', url: 'https://wa.me/6285888018854' }
+                            ]]
+                        }
+                    });
+                } else {
+                    bot.sendMessage(chatId, `Pembayaran belum selesai. Status: ${statusResponse.transaction_status}`);
+                }
             })
             .catch((err) => {
-                console.error(`Error checking transaction status: ${err.message}`);
-                bot.sendMessage(chatId, `Terjadi kesalahan saat memeriksa status transaksi: ${err.message}`);
+                console.error(`Error fetching transaction status: ${err.message}`);
+                bot.sendMessage(chatId, `Terjadi kesalahan saat mengambil status transaksi: ${err.message}`);
             });
     }, delay);
 }
 
-// Fungsi untuk mengirim pesan broadcast ke semua pengguna
-cron.schedule('0 7,12,17 * * *', () => {
+function getOrderMessage(product, variation, quantity) {
+    const now = new Date();
+    const currentTime = now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+    return `
+Konfirmasi Pesanan
+╭─────────────────╮
+| Produk: ${product.name}   
+│ Variasi: ${variation.duration}     
+│ Harga satuan: Rp. ${variation.price}    
+│ Stok tersedia: ${variation.stock}    
+│─────────────────
+│ Jumlah Pesanan: x${quantity}
+│ Total Pembayaran: Rp. ${variation.price * quantity}    
+╰─────────────────╯
+╰➤ Refresh at ${currentTime} WIB`;
+}
+
+// Broadcasting messages every day at 7 AM, 12 PM, and 5 PM
+cron.schedule('34 2,12,17 * * *', () => {
     console.log('Broadcast job executed');
-    const message = "🔔 Pengumuman: Pastikan Anda memeriksa produk terbaru kami!";
+    const message = "🔔 Pengumuman Spesial dari COINFIREBOOST INDONESIA! 🚀 Kami dengan bangga mempersembahkan layanan AI premium dan streaming premium yang akan mengubah cara Anda menikmati konten. 🎥✨ Dapatkan akses eksklusif ke fitur canggih yang dirancang untuk meningkatkan pengalaman Anda! 🎉 Jangan lewatkan kesempatan untuk menjelajahi dunia baru yang penuh inovasi. Kunjungi kami sekarang dan raih penawaran menarik yang hanya berlaku untuk Anda! 🌟";
 
-    User.find({}, (err, users) => {
-        if (err) {
-            console.error(`Error fetching users: ${err.message}`);
-            return;
-        }
-
-        users.forEach(user => {
-            bot.sendMessage(user.chatId, message)
-                .then(() => console.log(`Message sent to ${user.chatId}`))
-                .catch(err => console.error(`Error sending message to ${user.chatId}: ${err.message}`));
-        });
+    
+    chatIds.forEach(chatId => {
+        bot.sendMessage(chatId, message)
+            .then(() => console.log(`Message sent to ${chatId}`))
+            .catch(err => console.error(`Error sending message to ${chatId}: ${err.message}`));
     });
 });
 
-// Jalankan server
+
 app.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
 });
