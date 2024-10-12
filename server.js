@@ -12,7 +12,7 @@ const token = process.env.TELEGRAM_BOT_TOKEN;
 const bot = new TelegramBot(token, { polling: true });
 
 let midtrans = new midtransClient.Snap({
-    isProduction: false,
+    isProduction: true,
     clientKey: process.env.MIDTRANS_CLIENT_KEY,
     serverKey: process.env.MIDTRANS_SERVER_KEY,
 });
