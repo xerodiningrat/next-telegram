@@ -1,10 +1,7 @@
-
 const express = require('express');
 const TelegramBot = require('node-telegram-bot-api');
 const midtransClient = require('midtrans-client');
 const cron = require('node-cron');
-
-
 require('dotenv').config();
 
 const app = express();
@@ -44,7 +41,7 @@ const products = [
     { id: 12, name: "GOOGLEPAY DOKU", sold: 5400, description: "Payment Service & Full Garansi.", variations: [{ duration: "1 AKUN", price: 1500, stock: 30 }, { duration: "1 Bulan", price: 40000, stock: 20 }] },
     { id: 13, name: "GOOGLEPAY PAYCO", sold: 3000, description: "Payment Service & Full Garansi.", variations: [{ duration: "1 AKUN", price: 1500, stock: 25 }] },
     { id: 14, name: "GOOGLEPAY PSC", sold: 2200, description: "Payment Service & Full Garansi.", variations: [{ duration: "1 AKUN", price: 6000, stock: 20 }] },
-    { id: 15, name: "GSUITE X DOKU", sold: 8900, description: "Professional Suite & Full Garansi.", variations: [{ duration: "1 HARI", price: 2500, stock: 20 },{ duration: "3 HARI", price: 3500, stock: 20 }] },
+    { id: 15, name: "GSUITE X DOKU", sold: 8900, description: "Professional Suite & Full Garansi.", variations: [{ duration: "1 HARI", price: 2500, stock: 20 }, { duration: "3 HARI", price: 3500, stock: 20 }] },
     { id: 16, name: "GSUITE X PAYCO", sold: 4500, description: "Professional Suite & Full Garansi.", variations: [{ duration: "1 HARI", price: 2000, stock: 15 }, { duration: "3 HARI", price: 3500, stock: 15 }] },
     { id: 17, name: "MUSIC APPLE", sold: 9100, description: "Premium Music & Full Garansi.", variations: [{ duration: "1B Indlan", price: 8000, stock: 25 }, { duration: "1B Famhead", price: 8000, stock: 15 }] },
     { id: 18, name: "MUSIC DEEZER", sold: 6700, description: "Premium Music & Full Garansi.", variations: [{ duration: "1 Bulan", price: 8000, stock: 20 }] },
@@ -74,8 +71,8 @@ const products = [
 
 
 const chatIds = [];
+let orderStatus = {};
 
-// Function to create product detail messages
 function getProductDetailsMessage(product) {
     const now = new Date();
     const currentTime = now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -92,12 +89,25 @@ ${product.variations.map(v => `┊・ ${v.duration}: Rp ${v.price} - Stok: ${v.s
 ╰➤ Refresh at ${currentTime} WIB`;
 }
 
-let orderStatus = {};
+function getOrderMessage(product, variation, quantity) {
+    const totalAmount = variation.price * quantity;
+    return `
+==================================
+ORDER SUMMARY
+==================================
+Produk         : ${product.name}
+Durasi         : ${variation.duration}
+Harga satuan   : Rp${variation.price}
+Jumlah         : ${quantity}
+----------------------------------
+Total Harga    : Rp${totalAmount}
+==================================
+    `;
+}
 
 bot.onText(/\/start/, (msg) => {
     const chatId = msg.chat.id;
 
-    // Add chatId to the list if not already included
     if (!chatIds.includes(chatId)) {
         chatIds.push(chatId);
     }
@@ -178,7 +188,7 @@ bot.on('callback_query', (callbackQuery) => {
 
     if (!orderStatus[chatId]) return;
 
-    const { product, quantity } = orderStatus[chatId];
+    const { product, quantity, variation } = orderStatus[chatId];
 
     if (data.startsWith('select_')) {
         const variationIndex = parseInt(data.split('_')[1]);
@@ -200,6 +210,44 @@ bot.on('callback_query', (callbackQuery) => {
                 ]
             }
         });
+
+    } else if (data === 'increase') {
+        orderStatus[chatId].quantity += 1;
+
+        const orderMessage = getOrderMessage(product, variation, orderStatus[chatId].quantity);
+
+        bot.editMessageText(orderMessage, {
+            chat_id: chatId,
+            message_id: callbackQuery.message.message_id,
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '-', callback_data: 'decrease' }, { text: '+', callback_data: 'increase' }],
+                    [{ text: 'Confirm Order', callback_data: 'confirm' }],
+                    [{ text: 'Refresh', callback_data: 'refresh' }],
+                    [{ text: 'Kembali', callback_data: 'back' }]
+                ]
+            }
+        });
+
+    } else if (data === 'decrease') {
+        if (orderStatus[chatId].quantity > 1) {
+            orderStatus[chatId].quantity -= 1;
+
+            const orderMessage = getOrderMessage(product, variation, orderStatus[chatId].quantity);
+
+            bot.editMessageText(orderMessage, {
+                chat_id: chatId,
+                message_id: callbackQuery.message.message_id,
+                reply_markup: {
+                    inline_keyboard: [
+                        [{ text: '-', callback_data: 'decrease' }, { text: '+', callback_data: 'increase' }],
+                        [{ text: 'Confirm Order', callback_data: 'confirm' }],
+                        [{ text: 'Refresh', callback_data: 'refresh' }],
+                        [{ text: 'Kembali', callback_data: 'back' }]
+                    ]
+                }
+            });
+        }
     } else if (data === 'confirm') {
         const { product, variation } = orderStatus[chatId];
         const totalAmount = variation.price * quantity;
@@ -216,16 +264,15 @@ bot.on('callback_query', (callbackQuery) => {
         }).then((transaction) => {
             const redirectUrl = transaction.redirect_url;
 
-            bot.sendMessage(chatId, `Silahkan Melakukan Pembayaran Di Bawah Ini `, {
+            bot.sendMessage(chatId, `Silahkan Melakukan Pembayaran Di Bawah Ini`, {
                 reply_markup: {
                     inline_keyboard: [[{ text: 'Bayar Sekarang', url: redirectUrl }]]
                 }
             });
 
             checkTransactionStatus(chatId, orderId, 10000);
-        }).catch((err) => {
-            bot.sendMessage(chatId, `Terjadi kesalahan: ${err.message}`);
         });
+
     } else if (data === 'refresh') {
         const productDetailsMessage = getProductDetailsMessage(product);
         bot.editMessageText(productDetailsMessage, {
@@ -241,23 +288,64 @@ bot.on('callback_query', (callbackQuery) => {
         });
     } else if (data === 'back') {
         const productList = `╭────────────✧
-│   LIST PRODUK          
-│─────────────
-│ [1] AI CHATGPT+
-│ [2] AI CLAUDE
-╰────────────✧`;
+        │   LIST PRODUK          
+        │─────────────
+        │ [1] AI CHATGPT+
+        │ [2] AI CLAUDE
+        │ [3] AI PERPLEXITY
+        │ [4] AI YOU
+        │ [5] ALIGHT MOTION
+        │ [6] APPLE ARCADE
+        │ [7] APPLE ICLOUD
+        │ [8] APPLE MUSIC
+        │ [9] CANVA
+        │ [10] DEEPL
+        │ [11] GDRIVE LIFETIME
+        │ [12] GOOGLEPAY DOKU
+        │ [13] GOOGLEPAY PAYCO
+        │ [14] GOOGLEPAY PSC
+        │ [15] GSUITE X DOKU
+        │ [16] GSUITE X PAYCO
+        │ [17] MUSIC APPLE
+        │ [18] MUSIC DEEZER
+        │ [19] MUSIC NAPSTER
+        │ [20] MUSIC PANDORA
+        │ [21] MUSIC QOBUZ
+        │ [22] MUSIC TIDAL
+        │ [23] PICSART
+        │ [24] RCTI+
+        │ [25] REMINI WEB
+        │ [26] SCRIBD
+        │ [27] TRADINGVIEW
+        │ [28] UNLOCK CHEGG
+        │ [29] UNLOCK ENVANTO
+        │ [30] UNLOCK FLATICON
+        │ [31] UNLOCK FREEPIK
+        │ [32] UNLOCK SCRIBD
+        │ [33] UNLOCK SLIDESHARE
+        │ [34] VISION+
+        │ [35] VPN EXPRESS
+        │ [36] VPN HMA
+        │ [37] VPN NORD
+        │ [38] VPN SURFSHARK
+        │ [39] ZOOM MEETING
+        ╰────────────✧`;
         bot.sendMessage(chatId, `Kembali ke daftar produk. Ketik angka untuk memilih:\n${productList}`);
     }
 });
 
 function checkTransactionStatus(chatId, orderId, delay) {
-    setTimeout(() => {
+    const startTime = Date.now();
+    const timeout = 30 * 60 * 1000;
+    const interval = setInterval(async () => {
         console.log(`Checking status for order ID: ${orderId}`);
 
-        midtrans.transaction.status(orderId)
-            .then((statusResponse) => {
-                console.log(`Status Response:`, statusResponse);
+        try {
+            const statusResponse = await midtrans.transaction.status(orderId);
+            console.log(`Status Response:`, statusResponse);
 
+            if (statusResponse.transaction_status === "settlement") {
+                clearInterval(interval);
                 const invoiceMessage = `
 ==================================
                        INVOICE
@@ -274,57 +362,25 @@ Email Pelanggan       : customer@example.com
      Silakan hubungi kami jika ada pertanyaan.
 ==================================`;
 
-                if (statusResponse.transaction_status === "settlement") {
-                    bot.sendMessage(chatId, `Pembayaran berhasil!\n${invoiceMessage}`, {
-                        reply_markup: {
-                            inline_keyboard: [[
-                                { text: 'Konfirmasi via WhatsApp', url: 'https://wa.me/6285888018854' }
-                            ]]
-                        }
-                    });
-                } else {
-                    bot.sendMessage(chatId, `Pembayaran belum selesai. Status: ${statusResponse.transaction_status}`);
+                bot.sendMessage(chatId, `Pembayaran berhasil!\n${invoiceMessage}`, {
+                    reply_markup: {
+                        inline_keyboard: [[
+                            { text: 'Konfirmasi via WhatsApp', url: 'https://wa.me/6285888018854' }
+                        ]]
+                    }
+                });
+            } else {
+                if (Date.now() - startTime >= timeout) {
+                    clearInterval(interval);
+                    bot.sendMessage(chatId, `Pembayaran Anda telah kadaluarsa setelah 30 menit. Silakan coba lagi.`);
                 }
-            })
-            .catch((err) => {
-                console.error(`Error fetching transaction status: ${err.message}`);
-                bot.sendMessage(chatId, `Terjadi kesalahan saat mengambil status transaksi: ${err.message}`);
-            });
+            }
+        } catch (error) {
+            console.error("Error checking transaction status:", error);
+        }
     }, delay);
 }
 
-function getOrderMessage(product, variation, quantity) {
-    const now = new Date();
-    const currentTime = now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-
-    return `
-Konfirmasi Pesanan
-╭─────────────────╮
-| Produk: ${product.name}   
-│ Variasi: ${variation.duration}     
-│ Harga satuan: Rp. ${variation.price}    
-│ Stok tersedia: ${variation.stock}    
-│─────────────────
-│ Jumlah Pesanan: x${quantity}
-│ Total Pembayaran: Rp. ${variation.price * quantity}    
-╰─────────────────╯
-╰➤ Refresh at ${currentTime} WIB`;
-}
-
-// Broadcasting messages every day at 7 AM, 12 PM, and 5 PM
-cron.schedule('34 2,12,17 * * *', () => {
-    console.log('Broadcast job executed');
-    const message = "🔔 Pengumuman Spesial dari COINFIREBOOST INDONESIA! 🚀 Kami dengan bangga mempersembahkan layanan AI premium dan streaming premium yang akan mengubah cara Anda menikmati konten. 🎥✨ Dapatkan akses eksklusif ke fitur canggih yang dirancang untuk meningkatkan pengalaman Anda! 🎉 Jangan lewatkan kesempatan untuk menjelajahi dunia baru yang penuh inovasi. Kunjungi kami sekarang dan raih penawaran menarik yang hanya berlaku untuk Anda! 🌟";
-
-    
-    chatIds.forEach(chatId => {
-        bot.sendMessage(chatId, message)
-            .then(() => console.log(`Message sent to ${chatId}`))
-            .catch(err => console.error(`Error sending message to ${chatId}: ${err.message}`));
-    });
-});
-
-
 app.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
+    console.log(`Server running on port ${PORT}`);
 });
