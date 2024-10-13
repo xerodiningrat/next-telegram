@@ -1,7 +1,9 @@
+
 const express = require('express');
 const TelegramBot = require('node-telegram-bot-api');
 const midtransClient = require('midtrans-client');
 const cron = require('node-cron');
+
 
 require('dotenv').config();
 
@@ -12,7 +14,7 @@ const token = process.env.TELEGRAM_BOT_TOKEN;
 const bot = new TelegramBot(token, { polling: true });
 
 let midtrans = new midtransClient.Snap({
-    isProduction: true,
+    isProduction: false,
     clientKey: process.env.MIDTRANS_CLIENT_KEY,
     serverKey: process.env.MIDTRANS_SERVER_KEY,
 });
@@ -28,11 +30,49 @@ function generateOrderId(length) {
 }
 
 const products = [
-    { id: 1, name: "AI CHATGPT+", sold: 13300, description: "Sharing & Full Garansi.", variations: [{ duration: "1 Minggu", price: 10000, stock: 26 }, { duration: "1 Bulan", price: 30000, stock: 41 }] },
-    { id: 2, name: "AI CLAUDE", sold: 9200, description: "Sharing & Full Garansi.", variations: [{ duration: "1 Minggu", price: 12000, stock: 20 }] },
+    { id: 1, name: "AI CHATGPT+", sold: 13300, description: "Sharing & Full Garansi.", variations: [{ duration: "1 Minggu", price: 18000, stock: 26 }, { duration: "1 Bulan", price: 68000, stock: 41 }] },
+    { id: 2, name: "AI CLAUDE", sold: 9200, description: "Sharing & Full Garansi.", variations: [{ duration: "1 Minggu", price: 25000, stock: 20 }, { duration: "1 bulan", price: 55000, stock: 20 }] },
+    { id: 3, name: "AI PERPLEXITY", sold: 5000, description: "Sharing & Full Garansi.", variations: [{ duration: "1 Minggu", price: 15000, stock: 10 }, { duration: "1 Bulan", price: 40000, stock: 25 }] },
+    { id: 4, name: "AI YOU", sold: 7000, description: "Sharing & Full Garansi.", variations: [{ duration: "1 Minggu", price: 15000, stock: 15 }, { duration: "1 Bulan", price: 40000, stock: 30 }] },
+    { id: 5, name: "ALIGHT MOTION", sold: 8500, description: "Pro Membership & Full Garansi.", variations: [{ duration: "IOS 1 TAHUN", price: 12000, stock: 20 }, { duration: "ANDROID 1 TAHUN", price: 10000, stock: 35 }] },
+    { id: 6, name: "APPLE ARCADE", sold: 4300, description: "Full Access & Garansi.", variations: [{ duration: "2 Bulan", price: 10000, stock: 18 }] },
+    { id: 7, name: "APPLE ICLOUD", sold: 9100, description: "Cloud Storage & Full Garansi.", variations: [{ duration: "3 Bulan", price: 12000, stock: 40 }] },
+    { id: 8, name: "APPLE MUSIC", sold: 7800, description: "Full Access & Garansi.", variations: [{ duration: "2 Bulan", price: 12000, stock: 25 }] },
+    { id: 9, name: "CANVA", sold: 9600, description: "Pro Account & Full Garansi.", variations: [{ duration: "2 Bulan", price: 12000, stock: 30 }] },
+    { id: 10, name: "DEEPL", sold: 3200, description: "Pro Translator & Full Garansi.", variations: [{ duration: "1 Bulan", price: 12000, stock: 20 }] },
+    { id: 11, name: "GDRIVE LIFETIME", sold: 12000, description: "Lifetime Storage & Full Garansi.", variations: [{ duration: "300GB", price: 57000, stock: 10 }] },
+    { id: 12, name: "GOOGLEPAY DOKU", sold: 5400, description: "Payment Service & Full Garansi.", variations: [{ duration: "1 AKUN", price: 1500, stock: 30 }, { duration: "1 Bulan", price: 40000, stock: 20 }] },
+    { id: 13, name: "GOOGLEPAY PAYCO", sold: 3000, description: "Payment Service & Full Garansi.", variations: [{ duration: "1 AKUN", price: 1500, stock: 25 }] },
+    { id: 14, name: "GOOGLEPAY PSC", sold: 2200, description: "Payment Service & Full Garansi.", variations: [{ duration: "1 AKUN", price: 6000, stock: 20 }] },
+    { id: 15, name: "GSUITE X DOKU", sold: 8900, description: "Professional Suite & Full Garansi.", variations: [{ duration: "1 HARI", price: 2500, stock: 20 },{ duration: "3 HARI", price: 3500, stock: 20 }] },
+    { id: 16, name: "GSUITE X PAYCO", sold: 4500, description: "Professional Suite & Full Garansi.", variations: [{ duration: "1 HARI", price: 2000, stock: 15 }, { duration: "3 HARI", price: 3500, stock: 15 }] },
+    { id: 17, name: "MUSIC APPLE", sold: 9100, description: "Premium Music & Full Garansi.", variations: [{ duration: "1B Indlan", price: 8000, stock: 25 }, { duration: "1B Famhead", price: 8000, stock: 15 }] },
+    { id: 18, name: "MUSIC DEEZER", sold: 6700, description: "Premium Music & Full Garansi.", variations: [{ duration: "1 Bulan", price: 8000, stock: 20 }] },
+    { id: 19, name: "MUSIC NAPSTER", sold: 3400, description: "Premium Music & Full Garansi.", variations: [{ duration: "1 Bulan", price: 8000, stock: 15 }] },
+    { id: 20, name: "MUSIC PANDORA", sold: 7800, description: "Premium Music & Full Garansi.", variations: [{ duration: "1 Bulan", price: 18000, stock: 30 }] },
+    { id: 21, name: "MUSIC QOBUZ", sold: 4100, description: "Premium Music & Full Garansi.", variations: [{ duration: "1 Bulan", price: 10000, stock: 25 }] },
+    { id: 22, name: "MUSIC TIDAL", sold: 6300, description: "Premium Music & Full Garansi.", variations: [{ duration: "1 Bulan", price: 8000, stock: 20 }] },
+    { id: 23, name: "PICSART", sold: 11000, description: "Pro Tools & Full Garansi.", variations: [{ duration: "1 Bulan", price: 10000, stock: 35 }] },
+    { id: 24, name: "RCTI+", sold: 9200, description: "Full Access & Garansi.", variations: [{ duration: "1 Bulan", price: 15000, stock: 20 }, { duration: "1 TAHUN", price: 50000, stock: 20 }] },
+    { id: 25, name: "REMINI WEB", sold: 3500, description: "Pro Access & Full Garansi.", variations: [{ duration: "1 Bulan", price: 10000, stock: 10 }, { duration: "1 Tahun", price: 68000, stock: 20 }] },
+    { id: 26, name: "SCRIBD", sold: 8200, description: "Unlimited Access & Full Garansi.", variations: [{ duration: "1 Bulan", price: 15000, stock: 30 }] },
+    { id: 27, name: "TRADINGVIEW", sold: 9800, description: "Pro Charts & Full Garansi.", variations: [{ duration: "1 Bulan", price: 35000, stock: 25 }] },
+    { id: 28, name: "UNLOCK CHEGG", sold: 7500, description: "Homework Help & Full Garansi.", variations: [{ duration: "1 Link", price: 2500, stock: 15 }] },
+    { id: 29, name: "UNLOCK ENVANTO", sold: 4000, description: "Unlimited Downloads & Full Garansi.", variations: [{ duration: "1 Link", price: 2500, stock: 12 }] },
+    { id: 30, name: "UNLOCK FLATICON", sold: 6600, description: "Icon Access & Full Garansi.", variations: [{ duration: "1 Link", price: 2500, stock: 15 }] },
+    { id: 31, name: "UNLOCK FREEPIK", sold: 5800, description: "Premium Access & Full Garansi.", variations: [{ duration: "1 Link", price: 2500, stock: 10 }] },
+    { id: 32, name: "UNLOCK SCRIBD", sold: 6500, description: "Unlimited Access & Full Garansi.", variations: [{ duration: "1 Link", price: 2500, stock: 20 }] },
+    { id: 33, name: "UNLOCK SLIDESHARE", sold: 5900, description: "Premium Access & Full Garansi.", variations: [{ duration: "1 Link", price: 2500, stock: 10 }] },
+    { id: 34, name: "VISION+", sold: 7100, description: "Full Access & Garansi.", variations: [{ duration: "1 Bulan", price: 23000, stock: 20 }, { duration: "2 Bulan", price: 35000, stock: 20 }] },
+    { id: 35, name: "VPN EXPRESS", sold: 10000, description: "Unlimited VPN & Full Garansi.", variations: [{ duration: "1 Bulan", price: 15000, stock: 25 }] },
+    { id: 36, name: "VPN HMA", sold: 6000, description: "Unlimited VPN & Full Garansi.", variations: [{ duration: "1 Bulan", price: 15000, stock: 20 }] },
+    { id: 37, name: "VPN NORD", sold: 8800, description: "Unlimited VPN & Full Garansi.", variations: [{ duration: "1 Bulan", price: 25000, stock: 30 }] },
+    { id: 38, name: "VPN SURFSHARK", sold: 9200, description: "Unlimited VPN & Full Garansi.", variations: [{ duration: "1 Bulan", price: 15000, stock: 20 }] },
+    { id: 39, name: "ZOOM MEETING", sold: 8300, description: "Full Access & Garansi.", variations: [{ duration: "Akun Polosan", price: 1000, stock: 15 }, { duration: "2 Minggu", price: 10000, stock: 15 }] }
 ];
 
-// Store chat IDs for broadcasting
+
+
 const chatIds = [];
 
 // Function to create product detail messages
